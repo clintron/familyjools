@@ -1,3 +1,7 @@
+# Script output
+*.csv
+
+# Compiled Python stuff
 *.py[cod]
 
 # C extensions
