@@ -18,43 +18,45 @@ if loginResponse.text.find("The username and password combination you entered is
 	exit()
 
 sections = {
-	"calibrated-gems-by-type":					"http://www.stuller.com/browse/gemstones/shop-by-stone-type/calibrated-gems-by-type/",
-	"wedding-and-engagement-engagements": 		"http://www.stuller.com/browse/mountings/wedding-and-engagement/engagements/",
-	"wedding-and-engagement-solitaire": 		"http://www.stuller.com/browse/mountings/wedding-and-engagement/solitaire/",
-	"wedding-and-engagement-3-stone": 			"http://www.stuller.com/browse/mountings/wedding-and-engagement/3-stone/",
-	"rings-gemstone-fashion": 					"http://www.stuller.com/browse/jewelry/rings/gemstone-fashion/",
-	"necklaces-and-pendants-gemstone-fashion": 	"http://www.stuller.com/browse/jewelry/necklaces-and-pendants/gemstone-fashion/",
-	"necklaces-and-pendants-diamond-fashion": 	"http://www.stuller.com/browse/jewelry/necklaces-and-pendants/diamond-fashion/",
-	"diamond-stud-earrings": 					"http://www.stuller.com/diamond-stud-earrings/",
-	"earrings-gemstone-fashion": 				"http://www.stuller.com/browse/jewelry/earrings/gemstone-fashion/",
-	"diamond-fashion-button": 					"http://www.stuller.com/browse/jewelry/earrings/diamond-fashion/button/",
-	"diamond-fashion-drop": 					"http://www.stuller.com/browse/jewelry/earrings/diamond-fashion/drop/",
-	"diamond-fashion-jackets": 					"http://www.stuller.com/browse/jewelry/earrings/diamond-fashion/jackets/",
-	"wedding-and-engagement-anniversary-and-eternity-bands": "http://www.stuller.com/browse/mountings/wedding-and-engagement/anniversary-and-eternity-bands/",
+	"calibrated-gems-by-type":					{"url": "http://www.stuller.com/browse/gemstones/shop-by-stone-type/calibrated-gems-by-type/", "parsers": [parse.ProductCategoriesParser, parse.CategoryParser, parse.ProductTypeParser]},
+	# "wedding-and-engagement-engagements": 		{"url": "http://www.stuller.com/browse/mountings/wedding-and-engagement/engagements/", "parsers": [parse.CategoryParser, parse.PiecePermutationsParser, parse.PieceParser]}, 
+	# "wedding-and-engagement-solitaire": 		"http://www.stuller.com/browse/mountings/wedding-and-engagement/solitaire/",
+	# "wedding-and-engagement-3-stone": 			"http://www.stuller.com/browse/mountings/wedding-and-engagement/3-stone/",
+	# "rings-gemstone-fashion": 					{"url": "http://www.stuller.com/browse/jewelry/rings/gemstone-fashion/", "parsers": [parse.CategoryParser, parse.ProductTypeParser]},
+	# "necklaces-and-pendants-gemstone-fashion": 	"http://www.stuller.com/browse/jewelry/necklaces-and-pendants/gemstone-fashion/",
+	# "necklaces-and-pendants-diamond-fashion": 	"http://www.stuller.com/browse/jewelry/necklaces-and-pendants/diamond-fashion/",
+	# "diamond-stud-earrings": 					"http://www.stuller.com/diamond-stud-earrings/",
+	# "earrings-gemstone-fashion": 				"http://www.stuller.com/browse/jewelry/earrings/gemstone-fashion/",
+	# "diamond-fashion-button": 					"http://www.stuller.com/browse/jewelry/earrings/diamond-fashion/button/",
+	# "diamond-fashion-drop": 					"http://www.stuller.com/browse/jewelry/earrings/diamond-fashion/drop/",
+	# "diamond-fashion-jackets": 					"http://www.stuller.com/browse/jewelry/earrings/diamond-fashion/jackets/",
+	# "wedding-and-engagement-anniversary-and-eternity-bands": "http://www.stuller.com/browse/mountings/wedding-and-engagement/anniversary-and-eternity-bands/",
 }
 
-for section, requestURL in sections.items():
-	print ("Starting section '%s' at %s" % (section, requestURL))
-	productConfigurations = []
+for section, sectionParams in sections.items():
+	print ("Starting section '%s' at %s" % (section, sectionParams["url"]))
 
-	response = session.get(requestURL)
-	parser = parse.ProductCategoriesParser()
-	categoryLinksToFollow = parser.parseLinks(response.text)
+	linksToFollow = [ {"url": sectionParams['url'], "special data": {}} ]
+	lastParserClass = sectionParams["parsers"][-1]
+	productResults = []
 
-	for categoryLink in categoryLinksToFollow:
-		parser = parse.CategoryParser()
-		print ("Getting category list at " + categoryLink)
-		response = session.get(categoryLink)
-		productTypeLinksToFollow = parser.parseLinks(response.text)
+	for parserClass in sectionParams["parsers"]:
+		# Links for the next round
+		newLinks = []
+		for linkData in linksToFollow:
+			parser = parserClass(specialData=linkData["special data"])
+			print("Downloading parser link: " + linkData["url"])
+			response = session.get(linkData["url"])
+			
+			if parserClass != lastParserClass:
+				# Keep adding to the list of links to parse in the next round
+				newLinks += parser.parseLinks(response.text)
+				break
+			else:
+				productResults += parser.parseItems(response.text)
 
-		for typeLink in productTypeLinksToFollow:
-			print("\tGetting product type list at " + typeLink)
-			parser = parse.ProductTypeParser()
-			response = session.get(typeLink)
-			productConfigurations += parser.parseItems(response.text)
-
-		# 	break
-		# break
+		linksToFollow = newLinks
+		
 
 
-	file_output(productConfigurations, section + ".csv")
+	file_output(productResults, section + ".csv")

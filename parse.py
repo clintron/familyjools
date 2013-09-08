@@ -13,19 +13,31 @@ class GemParser(HTMLParser):
 	def parseLinks(self, html):
 		'''
 		Parse HTML for product types
+
+		Returns a list of dictionaries of the form: {"url": "http://whatever.com/esfef", "special data": {"some var": 234}}
 		'''
 		self.feed(html)
+
 		return self.linksToFollow
 
-	def addLink(self, href):
+	def parseItems(self, html):
+		# Classes which aren't meant to return items will raise an exception if this is called.
+		if self.items is None:
+			raise Exception("parseItems() called on a class which isn't intended to return items")
+		self.feed(html)
+		return self.items
+
+	def addLink(self, href, specialData={}):
 		if 0 != href.find("http"):
 			href = "http://www.stuller.com" + href
 
-		self.linksToFollow.append( href + ("?pageSize=%d" % self.pageSize if self.pageSize > 0 else "") )
+		self.linksToFollow.append({"url": href + ("?pageSize=%d" % self.pageSize if self.pageSize > 0 else ""), "special data": specialData})
 
-	def __init__(self, strict=False):
+	def __init__(self, strict=False, specialData={}):
 		super().__init__(strict=strict)
 		self.linksToFollow = []
+		self.specialData = specialData
+		self.items = None
 
 	def getAttributeDictionary(self, attrs):
 		return {key: value for key, value in attrs}
@@ -62,9 +74,10 @@ class ProductCategoriesParser(GemParser):
 class CategoryParser(GemParser):
 	pageSize = 0
 
-	def __init__(self):
+	def __init__(self, **extras):
 		self.isInCategoryResults = False
-		super().__init__()
+		self.isInProductLink = False
+		super().__init__(**extras)
 
 	def handle_starttag(self, tag, attrs):
 		attributes = self.getAttributeDictionary(attrs)
@@ -74,16 +87,26 @@ class CategoryParser(GemParser):
 			self.isInCategoryResults = True
 		elif "a" == tag and self.isInCategoryResults:
 			self.addLink(attributes["href"])
+			self.isInProductLink = True
+		elif "img" == tag and self.isInProductLink:
+			m = re.search('StullerRender/([^?]+)\?', attributes["src"])
+			if m is not None:
+				# The most recently added link is associated with this image
+				self.linksToFollow[-1]["special data"]["category image id"] = m.group(1)
+
 
 	def handle_endtag(self, tag):
 		if self.isInCategoryResults and tag == "table":
 			self.isInCategoryResults = False
+		elif self.isInProductLink and tag == "a":
+			self.isInProductLink = False
 
 
 class ProductTypeParser(GemParser):
 	pageSize = 0
 	
-	def __init__(self):
+	def __init__(self, **extras):
+		super().__init__(**extras)
 		self.isInProductTable = False
 		self.isInMainDiv = False
 		self.isInAGTACell = False
@@ -99,11 +122,6 @@ class ProductTypeParser(GemParser):
 		self.wantHeader = False
 		self.wantH3 = False
 		self.detailsLink = None
-		super().__init__()
-
-	def parseItems(self, html):
-		self.feed(html)
-		return self.items
 
 	def handle_starttag(self, tag, attrs):
 		attributes = self.getAttributeDictionary(attrs)
@@ -206,3 +224,53 @@ class ProductTypeParser(GemParser):
 		elif self.wantH3:
 			self.productType = data.strip()
 			self.wantH3 = False
+
+
+
+class PiecePermutationsParser(GemParser):
+	'''
+	Find request URLs for all the configurations of metals (with stones set) at a page like this:
+	http://www.stuller.com/products/122066/?groupId=117430
+	'''
+	pageSize = 0
+	
+	def __init__(self, **extras):
+		super().__init__(**extras)
+		
+		self.currentProduct = {}
+
+	def handle_starttag(self, tag, attrs):
+		attributes = self.getAttributeDictionary(attrs)
+		
+
+	def handle_endtag(self, tag):
+		pass
+
+
+	def handle_data(self, data):
+		pass
+
+
+class PieceParser(GemParser):
+	'''
+	From the same sort of page parsed by the PiecePermutationsParser, dig out the price and the metal,
+	and fill out the .items list.
+
+	http://www.stuller.com/products/122066/?groupId=117430
+	'''
+	pageSize = 0
+	
+	def __init__(self, **extras):
+		super().__init__(**extras)
+		
+		self.currentProduct = {}
+
+	def handle_starttag(self, tag, attrs):
+		attributes = self.getAttributeDictionary(attrs)
+		
+
+	def handle_endtag(self, tag):
+		pass
+
+	def handle_data(self, data):
+		pass
